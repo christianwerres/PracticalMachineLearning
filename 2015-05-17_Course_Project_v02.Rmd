@@ -1,0 +1,235 @@
+---
+title: "Practical Machine Learning"
+author: "Christian Werres"
+date: "Sunday, May 17, 2015"
+output: html_document
+---
+
+
+
+
+### Background & Task
+
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+
+#### Data 
+
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+#### What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+1. Your submission should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+2. You should also apply your machine learning algorithm to the 20 test cases available in the test data above. Please submit your predictions in appropriate format to the programming assignment for automated grading. See the programming assignment for additional details. 
+
+### Results
+
+#### Management Summary
+
+First we apply feature centering and scaling and split the data into a training (60 %) and testing (40 %) subset for cross-validation. Then we apply "random forest" to train a machine learning algorithm.
+When applying the trained random forest model on the testing subset the resulting accuarcy is > 99 %; the out of sample error < 1 %. 
+
+Then we use the trained random forest model to predict the outcome for the 20 new test cases.
+
+#### R Code
+
+
+
+```{r}
+library(caret)
+
+# set working directory
+setwd("C:/Users/Christian/Documents/Coursera/Data Science/08 - Practical Machine Learning/Course Project")
+
+```
+
+#####  Loading the train & test data sets
+
+```{r}
+train_data <- read.csv("trainingsdata/pml-training.csv", sep = ",")
+dim(train_data)
+
+test_data <- read.csv("testdata/pml-testing.csv", sep = ",")
+dim(test_data)
+
+# Visual check the outcome
+(table(train_data$classe))
+
+
+```
+
+
+#####  check the data for any missing values in relevant features.
+Relevant features: "belt", "(fore)arm" & "dumbbell"
+
+
+```{r}
+training_missing_values <- sapply(train_data, function (x) any(is.na(x) | x == ""))
+training_Predictor <- !training_missing_values & grepl("belt|[^(fore)]arm|dumbbell|forearm", names(training_missing_values))
+training_predCandidates <- names(training_missing_values)[training_Predictor]
+training_predCandidates
+
+
+```
+
+##### Subset the training data on relevant features only (non NA values)
+
+```{r}
+
+training_features <- c("classe", training_predCandidates)
+training_non_NA <- train_data[, training_features]
+dim(training_non_NA)
+
+
+```
+
+##### Check if all features are numeric features:
+
+```{r}
+
+nums <- sapply(training_non_NA, is.numeric)
+nums[nums == FALSE]
+# okay, all predictor columns are numerical
+
+
+```
+
+##### Do pre-processing (centering & scaling)
+
+```{r}
+
+prePro_training <- preProcess(training_non_NA[,2:53])
+prePro_training
+# apply pre-processing on training data
+training_data_preProcssed <- predict(prePro_training,training_non_NA[,2:53])
+dim(training_data_preProcssed)
+
+
+```
+
+#####  Create pre-processed data set containing the outcome variable "classes"
+
+
+```{r}
+
+training_non_NA_centered_scaled <- (cbind(training_non_NA$classe, training_data_preProcssed))
+names(training_non_NA_centered_scaled) <- c("classes", names(training_data_preProcssed))
+
+# check for near zero values
+nzv <- nearZeroVar(training_non_NA_centered_scaled, saveMetrics=TRUE)
+if (any(nzv$nzv)) nzv else message("No variables with near zero variance")
+
+```
+
+##### Split the input data into two subsets:
+
+1. training 
+2. testing / cross validation
+
+
+```{r}
+
+inTrain <- createDataPartition(y=training_non_NA_centered_scaled$classe, p=0.6, list=FALSE)
+training <- training_non_NA_centered_scaled[inTrain,]
+testing <- training_non_NA_centered_scaled[-inTrain,]
+
+# check dimensions
+dim(training)
+dim(testing)
+dim(training_non_NA)
+
+# qc:
+11776 + 7846
+
+
+```
+
+#####  Train a random forest model
+Predict outcome "classes" based on pre-processed features selected above.
+
+*(No rerun of the calulation due to long training time [> 1 h]. Use saved model. Therefore training data set in rerun may differ from the one used for training the model.)*
+
+
+```{r}
+
+# initial parallel processes
+# require(parallel)
+# require(doParallel)
+# cl <- makeCluster(detectCores() - 1)
+# registerDoParallel(cl)
+#ctrl <- trainControl(classProbs=TRUE, savePredictions=TRUE, allowParallel=TRUE)
+
+# do the random forest training
+# system.time(modelFit_rf <- train(training$classes ~ ., method = "rf", data = training))
+# User      System verstrichen 
+# 54.60        8.13     3632.86 
+# save the model
+# save(modelFit_rf, file="modelFit_rf.RData")
+
+# stop the clusters
+# stopCluster(cl)
+
+load(file="modelFit_rf.RData")
+
+
+
+```
+
+##### Show final model
+
+```{r}
+
+varImp(modelFit_rf)
+modelFit_rf$finalModel
+modelFit_rf
+
+
+```
+
+##### Evaluate the model on training & testing set
+
+Use the 40 % testing data subset to evaulate the random forest model. An out-of-sample error of less than 5 % would be a quite good.
+
+```{r}
+# evaluate the model based on testing set
+testing_predict <- predict(modelFit_rf, testing)
+confusionMatrix(testing_predict, testing$classes)
+
+```
+
+The resulting accuracy is > 99 % (when applying the model on the test data set). Consequently our out-of-sample error is less than 1 %.
+
+
+##### Apply random forest model on untouched test dataset
+Firstly Pre-Process the 20 test datasets and then use the trained random forest model for prediction.
+
+
+```{r}
+
+Test_centered_scaled <- predict(prePro_training, test_data[, training_predCandidates])
+# get prediction for unknown feature "classes"
+Test_predict <- predict(modelFit_rf, Test_centered_scaled)
+
+```
+
+##### Output the prediction results for the 20 test datasets
+
+
+```{r}
+
+Test_data_predicted_classes <- cbind(Test_predict , test_data)
+Test_data_predicted_classes[,c("X", "user_name", "Test_predict")]
+
+```
